@@ -62,7 +62,7 @@ export default function Home() {
             AI Requirement Assistant
           </p>
           <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            第一次模型调用
+            模型调用
           </h1>
           <p className="max-w-2xl text-lg leading-8 text-zinc-600">
             当前只验证最小链路：页面输入，服务端调用模型，再把结果返回页面。
@@ -89,9 +89,6 @@ export default function Home() {
               >
                 {loading ? "请求中..." : "发送到 /api/chat"}
               </button>
-              <span className="text-sm text-zinc-500">
-                周三目标：只打通一次真实模型调用
-              </span>
             </div>
           </div>
         </section>
@@ -112,16 +109,6 @@ export default function Home() {
             ) : null}
           </section>
         ) : null}
-
-        <section className="rounded-2xl border border-dashed border-zinc-300 bg-white p-6">
-          <h2 className="text-lg font-semibold text-zinc-900">今天的验收标准</h2>
-          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-zinc-600">
-            <li>OpenAI API Key 只放服务端环境变量</li>
-            <li>能访问并调用 <code>/api/chat</code></li>
-            <li>页面能展示模型返回文本</li>
-            <li>能记录输入、输出和错误情况</li>
-          </ul>
-        </section>
       </div>
     </main>
   );

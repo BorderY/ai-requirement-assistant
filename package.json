@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:proxy": "powershell -ExecutionPolicy Bypass -File scripts/dev-with-proxy.ps1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
