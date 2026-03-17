@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const response = await client.responses.create({
-      model: process.env.PACKYCODE_MODEL || "gpt-5-mini",
+      model: process.env.PACKYCODE_MODEL || "gpt-5.4",
       input,
       store: false,
     });
