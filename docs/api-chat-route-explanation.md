@@ -5,104 +5,173 @@
 - 路径：`./src/app/api/chat/route.ts`
 - 类型：Next.js App Router 的 Route Handler
 - 方法：`POST`
-- 作用：接收前端 `input`，调用大模型接口，返回模型输出
+- 作用：接收前端 `prompt`，通过 Vercel AI SDK 调用 PackyCode 网关，并返回文本流
 
 ---
 
-## 1) 配置与客户端初始化
+## 当前实现的核心结论
 
-代码会先读取环境变量并初始化 `OpenAI` 客户端：
+当前项目真正生效的路径不是 raw `client.responses.create(...)`，而是：
 
-- `PACKYCODE_API_KEY`：模型服务 API Key（必填）
-- `PACKYCODE_BASE_URL`：自定义 API 网关地址（可选）
-- `PACKYCODE_MODEL`：模型名，默认 `gpt-5.4`
-- `PACKYCODE_TIMEOUT_MS`：请求超时时间，默认 `60000` ms
+- `createOpenAICompatible()`：把 PackyCode 网关接成 AI SDK provider
+- `streamText()`：发起流式文本生成
+- `toTextStreamResponse()`：把结果转成浏览器可读的文本流
 
-客户端配置关键点：
+也就是说：
 
-- `timeout`：超时控制
-- `maxRetries: 0`：不自动重试，失败直接抛错
-
----
-
-## 2) 错误信息处理：`getErrorMessage(error)`
-
-这个函数用于统一错误输出：
-
-- 如果是普通 `Error`，优先返回 `error.message`
-- 如果 message 是 `"Request timed out."`，会转成更可读的提示：
-  - `"Request timed out. Check proxy/network for Node.js runtime."`
-- 非 `Error` 类型则返回 `"unknown error"`
+- 前端请求字段是 `prompt`
+- 服务端返回是纯文本流
+- 页面消费方式是 `useCompletion()`
 
 ---
 
-## 3) 模型调用封装：`callModel(input)`
+## 1) 环境变量与 provider 初始化
 
-`callModel` 只做一件事：把用户输入转发给模型。
+当前文件会读取这些环境变量：
 
-请求结构：
+- `PACKYCODE_API_KEY`
+- `PACKYCODE_BASE_URL`
+- `PACKYCODE_MODEL`
 
-- `model`：来自环境变量（或默认值）
-- `messages`：仅包含一条 user 消息
+当前活跃代码里的 provider 初始化是：
 
-返回结构：
+```ts
+const packycode = createOpenAICompatible({
+  name: "packycode",
+  apiKey,
+  baseURL,
+});
+```
 
-- `text`：`chat.choices[0]?.message?.content ?? ""`
-- `responseId`：`chat.id`
+这一步的作用是：
 
----
+- 继续沿用 PackyCode 的 OpenAI-compatible 地址
+- 但把网关包装成 AI SDK 能直接消费的 provider
 
-## 4) 接口主流程：`POST(request)`
-
-按执行顺序可分为 5 步：
-
-1. **检查 API Key**
-   - 若 `PACKYCODE_API_KEY` 缺失，返回 `500`
-   - 响应：`{ error: "PACKYCODE_API_KEY is missing" }`
-
-2. **解析请求体**
-   - `const body = await request.json()`
-   - `const input = String(body.input ?? "").trim()`
-
-3. **参数校验**
-   - 若 `input` 为空，返回 `400`
-   - 响应：`{ error: "input is required" }`
-
-4. **调用模型并返回结果**
-   - `const result = await callModel(input)`
-   - 正常返回 `200`：`{ text, responseId }`
-
-5. **兜底异常处理**
-   - 打印日志：`console.error("[/api/chat] error:", error)`
-   - 返回 `500` + 统一错误信息
+注意：`route.ts` 里还保留了 `OpenAI` import、`PACKYCODE_TIMEOUT_MS` 变量和一段旧注释。它们属于历史排障痕迹，不是当前主流程。
 
 ---
 
-## 时序图（前端 -> API 路由 -> 模型）
+## 2) `maxDuration = 30` 的作用
+
+```ts
+export const maxDuration = 30;
+```
+
+这是 Next.js / Vercel 读取的约定导出，不需要手动调用。
+
+它的意义是：
+
+- 为这条流式路由声明最长运行时间
+- 避免平台过早切断长响应
+
+---
+
+## 3) 错误信息处理：`getErrorMessage(error)`
+
+这段函数用于把未知异常转成更可读的字符串。
+
+当前逻辑重点是：
+
+- 如果遇到 `Request timed out.`，就返回更明确的代理 / 网络提示
+- 其他普通错误则返回 `error.message`
+
+这样页面或日志更容易区分：
+
+- 是代码契约问题
+- 还是服务端根本没出网
+
+---
+
+## 4) 当前请求 / 返回契约
+
+### 请求体
+
+当前前端默认发送：
+
+```json
+{
+  "prompt": "请用一句话总结前端需求拆解助手的作用"
+}
+```
+
+所以服务端读取的是：
+
+```ts
+const body = await request.json();
+const prompt = String(body.prompt ?? "").trim();
+```
+
+### 返回值
+
+当前返回的是：
+
+```ts
+return result.toTextStreamResponse();
+```
+
+这意味着 `/api/chat` 不是一个返回固定 JSON 的接口，而是一个文本流接口。
+
+如果前端还在按下面方式读取：
+
+```ts
+const data = await res.json();
+```
+
+那就和当前实现不兼容。
+
+---
+
+## 5) 接口主流程：`POST(request)`
+
+当前实现流程可以拆成 6 步：
+
+1. `await request.json()`
+2. `const prompt = String(body.prompt ?? "").trim()`
+3. 校验 `apiKey / baseURL / prompt`
+4. 创建 `packycode` provider
+5. 调用 `streamText({ model: packycode.chatModel(model), prompt, onFinish })`
+6. `return result.toTextStreamResponse()`
+
+关键代码是：
+
+```ts
+const result = streamText({
+  model: packycode.chatModel(model),
+  prompt,
+  onFinish(event) {
+    console.log("[/api/chat] finish");
+    console.log("[/api/chat] prompt:", prompt);
+    console.log("[/api/chat] text:", event.text);
+  },
+});
+
+return result.toTextStreamResponse();
+```
+
+这就是当前 streaming 的核心。
+
+---
+
+## 6) 时序图
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant FE as Frontend
+    participant FE as page.tsx / useCompletion
     participant API as /api/chat (route.ts)
-    participant LLM as Model API (OpenAI-compatible)
+    participant Provider as AI SDK Provider
+    participant LLM as PackyCode Gateway
 
-    FE->>API: POST /api/chat { input }
-    API->>API: 校验 PACKYCODE_API_KEY
-    alt API Key 缺失
-        API-->>FE: 500 { error: "PACKYCODE_API_KEY is missing" }
-    else API Key 正常
-        API->>API: request.json() + trim(input)
-        alt input 为空
-            API-->>FE: 400 { error: "input is required" }
-        else input 合法
-            API->>LLM: chat.completions.create(model, messages)
-            LLM-->>API: { id, choices[0].message.content }
-            API-->>FE: 200 { text, responseId }
-        end
-    end
+    FE->>API: POST /api/chat { prompt }
+    API->>API: request.json() + trim(prompt)
+    API->>Provider: createOpenAICompatible(...)
+    API->>LLM: streamText({ model, prompt })
+    LLM-->>API: text stream
+    API-->>FE: toTextStreamResponse()
+    FE->>FE: completion 持续累积
 
-    opt 调用异常（超时/网络/其他）
+    opt 调用失败
         API->>API: getErrorMessage(error)
         API-->>FE: 500 { error }
     end
@@ -110,30 +179,28 @@ sequenceDiagram
 
 ---
 
-## 响应示例
+## 7) 这份实现当前没有提供什么
 
-### 成功（200）
+当前这条最小实现没有直接提供：
 
-```json
-{
-  "text": "这是模型的回复内容",
-  "responseId": "chatcmpl_xxx"
-}
-```
+- `responseId`
+- token usage
+- finish reason 等结构化元数据
 
-### 参数错误（400）
+这不是 AI SDK 做不到，而是因为当前返回方式选择了最简单的文本流协议。
 
-```json
-{
-  "error": "input is required"
-}
-```
+如果后续需要这些信息，应考虑：
 
-### 服务错误（500）
+- AI SDK 的 UI message stream
+- 或者自定义 SSE / JSON stream 协议
 
-```json
-{
-  "error": "PACKYCODE_API_KEY is missing"
-}
-```
+---
 
+## 8) 历史说明
+
+文件里保留的注释中还能看到：
+
+- `chat.completions` 版本
+- raw `responses.create(...)` 版本
+
+它们对应的是本次兼容性排障历史，不是当前仓库默认实现。
