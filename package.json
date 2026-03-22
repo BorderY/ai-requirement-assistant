@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:backend": "uvicorn backend.app.main:app --reload --port 8000",
     "dev:proxy": "powershell -ExecutionPolicy Bypass -File scripts/dev-with-proxy.ps1",
     "build": "next build",
     "start": "next start",
@@ -12,7 +13,9 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.35",
     "@ai-sdk/react": "^3.0.118",
+    "@types/better-sqlite3": "^7.6.13",
     "ai": "^6.0.116",
+    "better-sqlite3": "^12.8.0",
     "next": "16.1.6",
     "openai": "^6.31.0",
     "react": "19.2.3",
