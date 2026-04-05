@@ -13,6 +13,7 @@ def get_client() -> AsyncOpenAI:
     global client
 
     if client is None:
+        # 进程内复用同一个 AsyncOpenAI client，避免每次请求都重新建连接池。
         client = AsyncOpenAI(
             api_key=settings.packycode_api_key,
             base_url=settings.normalized_packycode_base_url,
@@ -28,6 +29,7 @@ async def close_packycode_client():
     if client is None:
         return
 
+    # 应用退出时主动 close，避免开发期热重载后残留未关闭连接。
     await client.close()
     client = None
 
@@ -43,6 +45,7 @@ async def stream_chat_text(prompt: str) -> AsyncIterator[str]:
         if not chunk.choices:
             continue
 
+        # 当前前端仍按纯文本流消费，所以这里只透传 assistant 的文本增量。
         delta = chunk.choices[0].delta.content or ""
         if delta:
             yield delta

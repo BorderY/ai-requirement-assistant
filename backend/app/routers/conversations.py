@@ -16,12 +16,14 @@ router = APIRouter(prefix="/api", tags=["conversations"])
 
 @router.get("/conversations")
 async def get_conversations():
+    # 这里直接返回 dict，FastAPI 会自动把它序列化成 JSON。
     return {"conversations": list_conversations()}
 
 
 @router.post("/conversations")
 async def post_conversation(body: CreateConversationRequest):
     try:
+        # body.title 默认允许为空；真正的兜底标题由存储层统一处理。
         conversation = create_conversation(body.title)
 
         return {
@@ -36,6 +38,7 @@ async def post_conversation(body: CreateConversationRequest):
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation_detail(conversation_id: str):
+    # 路径参数会自动注入到函数参数里，类型这里就是普通 str。
     normalized_conversation_id = conversation_id.strip()
 
     if not normalized_conversation_id:

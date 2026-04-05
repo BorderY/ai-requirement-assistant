@@ -9,6 +9,7 @@ MessageRole = Literal["user", "assistant"]
 
 
 class ChatRequest(BaseModel):
+    # 给空字符串默认值的好处是：前端少字段时，错误会统一收敛到我们自己的业务校验提示。
     prompt: str = ""
     conversationId: str = ""
 
@@ -30,3 +31,5 @@ class MessageRecord(BaseModel):
     role: MessageRole
     content: str
     createdAt: str
+
+

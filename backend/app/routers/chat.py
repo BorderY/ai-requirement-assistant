@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_error_message(error: Exception) -> str:
+    # 路由最终返回给前端的错误文本要尽量直接，不要把 Python 异常对象原样甩出去。
     message = str(error).strip() or "unknown error"
 
     if "timed out" in message.lower():
@@ -30,6 +31,8 @@ def get_error_message(error: Exception) -> str:
 @router.post("/chat")
 async def post_chat(body: ChatRequest):
     try:
+        # FastAPI 已经先帮我们把 JSON 解析成了 ChatRequest，
+        # 这里直接像普通对象一样拿字段即可。
         prompt = body.prompt.strip()
         conversation_id = body.conversationId.strip()
 
@@ -53,9 +56,12 @@ async def post_chat(body: ChatRequest):
         collected_chunks: list[str] = []
 
         async def event_stream():
+            # 只有流完整结束后才落 assistant，避免数据库里留下半截回答。
             stream_completed = False
 
             try:
+                # async for 表示“异步地一段一段读流”。
+                # 每 yield 一次，前端就能尽快收到一小段文本。
                 async for chunk in stream_chat_text(prompt):
                     collected_chunks.append(chunk)
                     yield chunk
@@ -79,6 +85,8 @@ async def post_chat(body: ChatRequest):
                         except Exception:
                             logger.exception("[/api/chat] persist assistant message error")
 
+        # StreamingResponse 是 FastAPI 里做流式输出的核心类。
+        # 只要 event_stream() 持续 yield，浏览器就会持续收到文本片段。
         return StreamingResponse(
             event_stream(),
             media_type="text/plain; charset=utf-8",

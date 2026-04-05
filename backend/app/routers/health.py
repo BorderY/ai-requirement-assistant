@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 
 def build_proxy_state():
+    # 这里复用 Node 侧同名环境变量，方便前后端联调时快速对照代理是否真的注入。
     return {
         "nodeUseEnvProxy": os.getenv("NODE_USE_ENV_PROXY", "unset"),
         "hasHttpProxy": bool(os.getenv("HTTP_PROXY")),
@@ -22,6 +23,7 @@ def build_proxy_state():
 
 @router.get("/health/network")
 async def get_network_health():
+    # 这个接口不是查业务状态，而是专门查“当前后端进程能不能访问上游模型网关”。
     started_at = time.perf_counter()
     proxy = build_proxy_state()
 
@@ -54,8 +56,10 @@ async def get_network_health():
     try:
         async with httpx.AsyncClient(
             timeout=settings.packycode_health_timeout_ms / 1000,
+            # 让 httpx 继承当前进程代理环境变量，便于直接复用本地代理配置。
             trust_env=True,
         ) as client:
+            # 这里故意只打一个很轻量的 /models，请求足够便宜，也足够说明网络是否通。
             response = await client.get(
                 target,
                 headers={"Authorization": f"Bearer {settings.packycode_api_key}"},
